@@ -5,16 +5,14 @@ import java.util.*;
 public class RobotDelivery {
     public static final Map<Integer, Integer> sizeToFreq = new HashMap<>();
     private static final Object lock = new Object();
-    private static volatile boolean isRunning = true;
 
     public static void main(String[] args) throws InterruptedException {
-        // Поток для вывода текущего лидера
+        // поток для выывода текущего лидера:
         Thread statsThread = new Thread(() -> {
-            while (isRunning) {
+            while (!Thread.interrupted()) {
                 synchronized (lock) {
                     try {
                         lock.wait();
-                        if (!isRunning) break;
 
                         synchronized (sizeToFreq) {
                             Map.Entry<Integer, Integer> maxEntry = null;
@@ -24,13 +22,12 @@ public class RobotDelivery {
                                 }
                             }
                             if (maxEntry != null) {
-                                System.out.println("Текущий лидер: " + maxEntry.getKey()
-                                        + " (" + maxEntry.getValue() + " раз)");
+                                System.out.println("Текущий лидер: " + maxEntry.getKey() + " (" + maxEntry.getValue() + " раз)");
                             }
                         }
                     } catch (InterruptedException e) {
+                        // Прерывание для выхода из цикла
                         Thread.currentThread().interrupt();
-                        break;
                     }
                 }
             }
@@ -39,12 +36,16 @@ public class RobotDelivery {
 
         List<Thread> threads = new ArrayList<>();
 
-        // Создаем рабочие потоки
+
+        // Поток, который создает строки
         for (int i = 0; i < 1000; i++) {
             Thread thread = new Thread(() -> {
                 String route = generateRoute("RLRFR", 100);
                 int countR = countR(route);
 
+                //System.out.println(countR);
+
+                // Поставлен монитор, который запрещает вносить данные
                 synchronized (sizeToFreq) {
                     sizeToFreq.put(countR, sizeToFreq.getOrDefault(countR, 0) + 1);
                 }
@@ -53,40 +54,35 @@ public class RobotDelivery {
                     lock.notify();
                 }
             });
-            threads.add(thread);
-            thread.start();
+            threads.add(thread); // Список потоков
+            thread.start(); // запуск потока по созданию строк
         }
 
-        // Ожидаем завершения всех рабочих потоков
+        // Ожидаем завершения всех потоков:
         for (Thread thread : threads) {
             thread.join();
         }
 
-        // Останавливаем поток статистики
-        synchronized (lock) {
-            isRunning = false;
-            lock.notify();
-        }
+        //Проверяем поток статистики
+        statsThread.interrupt();
         statsThread.join();
 
-        printStatistics();
+
+        printStatictics();
     }
 
-    public static void printStatistics() {
-        System.out.println("\nФинальная статистика:");
+    public static void printStatictics() {
+        System.out.println("\nФинальная статистика");
         synchronized (sizeToFreq) {
             if (sizeToFreq.isEmpty()) {
                 System.out.println("Нет данных для статистики");
                 return;
             }
 
-            Map.Entry<Integer, Integer> maxEntry = Collections.max(
-                    sizeToFreq.entrySet(),
-                    Map.Entry.comparingByValue()
-            );
-
-            System.out.println("Самое частое число повторений " + maxEntry.getKey() +
-                    " (встретилось " + maxEntry.getValue() + " раз)");
+            Map.Entry<Integer, Integer> maxEntry = sizeToFreq.entrySet().stream()
+                    .max(Comparator.comparing(Map.Entry::getValue))
+                    .orElse(null);
+            System.out.println("Самое частое число повторений " + maxEntry.getKey() + " (встретилось " + maxEntry.getValue() + " раз)");
             System.out.println("Другие размеры: ");
             sizeToFreq.entrySet().stream()
                     .filter(e -> !e.getKey().equals(maxEntry.getKey()))
